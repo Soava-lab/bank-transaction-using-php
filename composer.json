@@ -1,0 +1,22 @@
+{
+    "name": "soava-lab/sh-service",
+    "description": "The sh-service Framework.",
+    "keywords": ["framework", "sh-service"],
+    "license": "MIT",
+    "type": "project",
+    "authors": [
+        {
+            "name": "soava-lab",
+            "email": "32deva@phpbala.in"
+        }
+    ],
+    "require": {
+        "php": ">=5.4",
+        "phpoffice/phpexcel": "^1.8"
+    },
+    "config": {
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "optimize-autoloader": true
+    }
+}

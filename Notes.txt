@@ -1,0 +1,129 @@
+1. index.php will be run as server [ creating url and returns json response]
+
+2. client.php request and response ans everithing from core
+
+3. Http.php System code for all
+
+4. dbc/dbc.php is a database class library very light weight (medoo) 
+
+============================================================================
+
+DELIMITER |
+
+create trigger debit_balance after insert on reference
+for each row
+BEGIN
+
+  UPDATE account SET available_balance = available_balance-new.amount WHERE account_id = new.from_account_id;
+
+ END;
+|
+
+delimiter ;
+
+
+========= 2ND ================== drop trigger debit_balance; drop trigger clear_debit_reference_error;
+
+DELIMITER |
+
+create trigger debit_balance after insert on reference
+for each row
+BEGIN
+  
+  DECLARE a_amount FLOAT;
+  SET a_amount = (SELECT available_balance FROM account WHERE account_id = new.from_account_id); 
+  IF (a_amount >= NEW.amount) THEN
+  
+   UPDATE account SET available_balance = available_balance-new.amount , last_activity = NOW() WHERE account_id = new.from_account_id;
+
+  ELSE
+  
+   INSERT INTO reference_error_log SELECT * FROM reference where from_account_id = new.from_account_id;
+
+  END IF;
+
+ END#
+|
+
+delimiter ;
+
+============= CLEAR FAKE DEBIT ================
+
+DELIMITER |
+
+create trigger clear_debit_reference_error after delete on reference_error_log
+for each row
+BEGIN
+  
+  DELETE FROM reference where from_account_id = OLD.from_account_id; 
+
+ END#
+|
+
+delimiter ;
+
+=============== After approve the reference insert into transaction AND credit to benificiary account ================
+
+DELIMITER |
+
+create trigger credit_balance after insert on transaction
+for each row
+BEGIN
+  
+  DECLARE to_account_id INT;
+  
+  SET to_account_id = (SELECT to_account_id FROM reference WHERE ref_id = new.ref_id); 
+
+  UPDATE account SET available_balance = available_balance+new.txn_amount , last_activity = NOW() WHERE account_id = to_account_id;  
+  
+ END#
+|
+
+delimiter ;
+
+===================== Approve transaction ============================= drop procedure approve_reference; call approve_reference(2);
+
+drop procedure approve_reference;
+DELIMITER $$
+CREATE PROCEDURE approve_reference (IN ref_id INT)
+BEGIN
+
+	DECLARE to_ac_id INT;
+    DECLARE txn_amount INT;
+	DECLARE avail_balance DOUBLE;
+
+	SELECT to_account_id , amount INTO to_ac_id , txn_amount FROM reference WHERE ref_id = ref_id;
+
+    
+    update `account` set available_balance = available_balance+txn_amount , last_activity = NOW() WHERE account_id = to_ac_id; 
+    
+    INSERT INTO transaction (`ref_id`, `txn_amount`, `current_balance`, `txn_type`, `account_id`, `txn_type_id`, `txn_note`, `txn_date`) SELECT r.ref_id,r.amount,a.available_balance,'Debit',r.from_account_id,r.txt_type_id,r.note,now() FROM reference r INNER JOIN account a ON a.account_id=r.from_account_id WHERE r.ref_id=ref_id;
+    
+END$$
+
+DELIMITER ;
+
+===============
+
+drop procedure approve_reference;
+DELIMITER $$
+CREATE PROCEDURE approve_reference (IN ref_id INT)
+BEGIN
+
+  DECLARE to_ac_id INT;
+    DECLARE txn_amount INT;
+  DECLARE avail_balance DOUBLE;
+
+  SELECT to_account_id , amount INTO to_ac_id , txn_amount FROM reference WHERE ref_id = ref_id;
+
+    
+    update `account` set available_balance = available_balance+txn_amount , last_activity = NOW() WHERE account_id = to_ac_id; 
+    
+    INSERT INTO transaction (`ref_id`, `txn_amount`, `current_balance`, `txn_type`, `account_id`, `txn_type_id`, `txn_note`, `txn_date`) SELECT r.ref_id,r.amount,a.available_balance,'Debit',r.from_account_id,r.txt_type_id,r.note,now() FROM reference r INNER JOIN account a ON a.account_id=r.from_account_id WHERE r.ref_id=ref_id order by r.ref_id DESC LIMIT 1;
+    
+
+    INSERT INTO transaction (`ref_id`, `txn_amount`, `current_balance`, `txn_type`, `account_id`, `txn_type_id`, `txn_note`, `txn_date`) SELECT r.ref_id,r.amount,a.available_balance,'Credit',r.to_account_id,r.txt_type_id,r.note,now() FROM reference r INNER JOIN account a ON a.account_id=r.to_account_id WHERE r.ref_id=ref_id order by r.ref_id DESC LIMIT 1;
+    
+END$$
+
+DELIMITER ;
